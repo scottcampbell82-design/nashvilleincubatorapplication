@@ -64,6 +64,8 @@ cp .env.example .env
 - Auth:
   - `JWT_SECRET`
   - `ADMIN_EMAIL`
+  - `LOGIN_ALERT_ENABLED` (`true`/`false`)
+  - `LOGIN_ALERT_EMAIL` (defaults to `scott@nashvilleincubator.org`)
   - `ALLOWED_ORIGIN` (comma-separated allowed frontend origins, e.g. `http://localhost:8000,http://127.0.0.1:8000`)
 - OpenAI:
   - `OPENAI_API_KEY`
@@ -88,7 +90,15 @@ npm run dev
 
 Backend runs on `http://localhost:8787` by default.
 
+## Production / GitHub Pages note
+
+If frontend is hosted on GitHub Pages (or any public host), deploy backend on a public domain and set:
+
+- frontend `/config.js`: `BACKEND_BASE_URL=https://your-backend-domain.com`
+- backend `.env`: `ALLOWED_ORIGIN=https://your-github-pages-domain`
+
 ## Notes
 
 - Data is stored in `backend/data/store.json`.
 - If SMTP is not configured, forgot-password returns a `devResetToken` for local testing.
+- If SMTP is configured and `LOGIN_ALERT_ENABLED=true`, every successful login sends an alert to `LOGIN_ALERT_EMAIL`.

@@ -3,7 +3,7 @@ import cors from "cors";
 import { config } from "./config.js";
 import { runAiTask } from "./ai.js";
 import { buildResetEmailContent } from "./devMailer.js";
-import { sendEmailMessage, sendEventEmail } from "./email.js";
+import { sendEmailMessage, sendEventEmail, sendLoginAlertEmail } from "./email.js";
 import { createGoogleDoc } from "./googleDocs.js";
 import {
   addCoachToApplication,
@@ -26,6 +26,7 @@ import {
 } from "./auth.js";
 
 const app = express();
+app.set("trust proxy", true);
 
 app.use(cors({
   origin(origin, callback) {
@@ -55,19 +56,44 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "tn-incubator-charter-backend" });
 });
 
-app.post("/auth/register", (req, res) => {
+async function notifyLoginAlert(user, req) {
+  if (!config.loginAlertEnabled || !config.loginAlertEmail) {
+    return;
+  }
+
+  const ipHeader = req.headers["x-forwarded-for"];
+  const forwardedIp = Array.isArray(ipHeader) ? ipHeader[0] : String(ipHeader || "").split(",")[0].trim();
+
+  try {
+    await sendLoginAlertEmail({
+      to: config.loginAlertEmail,
+      user,
+      requestMeta: {
+        ip: forwardedIp || req.ip || "Unknown",
+        userAgent: req.headers["user-agent"] || "Unknown",
+        origin: req.headers.origin || "Unknown"
+      }
+    });
+  } catch (error) {
+    console.warn("Login alert email failed:", error instanceof Error ? error.message : error);
+  }
+}
+
+app.post("/auth/register", async (req, res) => {
   try {
     const user = registerUser(req.body || {});
     const login = loginUser({ email: user.email, password: req.body?.password });
+    await notifyLoginAlert(login.user, req);
     res.json(login);
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Registration failed" });
   }
 });
 
-app.post("/auth/login", (req, res) => {
+app.post("/auth/login", async (req, res) => {
   try {
     const result = loginUser(req.body || {});
+    await notifyLoginAlert(result.user, req);
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Login failed" });

@@ -47,18 +47,21 @@ python3 -m http.server 8000
 
 ## Frontend config
 
-`/config.js` defaults are local backend values:
+`/config.js` should point to your deployed backend when hosting the frontend publicly (for example GitHub Pages):
 
 ```js
 window.SURVEY_CONFIG = {
-  AI_ENDPOINT: "http://localhost:8787/ai",
-  NOTIFICATION_WEBHOOK_URL: "http://localhost:8787/notify",
-  GOOGLE_DOC_WEBHOOK_URL: "http://localhost:8787/google-doc",
+  BACKEND_BASE_URL: "https://your-backend-domain.com",
+  AI_ENDPOINT: "",
+  NOTIFICATION_WEBHOOK_URL: "",
+  GOOGLE_DOC_WEBHOOK_URL: "",
   OPENAI_API_KEY: "",
   OPENAI_MODEL: "gpt-4o-mini",
   BUDGET_SHEET_URL: ""
 };
 ```
+
+If `BACKEND_BASE_URL` is blank, the app attempts `https://<frontend-origin>/api`.
 
 ## Backend env values
 

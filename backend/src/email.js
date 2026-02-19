@@ -109,3 +109,22 @@ export async function sendEmailMessage({ to, subject, text }) {
     accepted: info.accepted
   };
 }
+
+export async function sendLoginAlertEmail({ to, user, requestMeta }) {
+  const subject = `Login Alert: ${user?.email || "unknown user"}`;
+  const text = [
+    "A user logged into the TN Incubator Charter Application App.",
+    "",
+    `Name: ${user?.name || "Unknown"}`,
+    `Email: ${user?.email || "Unknown"}`,
+    `Role: ${user?.role || "user"}`,
+    `Time (UTC): ${new Date().toISOString()}`,
+    `IP: ${requestMeta?.ip || "Unknown"}`,
+    `User-Agent: ${requestMeta?.userAgent || "Unknown"}`,
+    `Origin: ${requestMeta?.origin || "Unknown"}`,
+    "",
+    "Please review and approve this user as needed."
+  ].join("\n");
+
+  return sendEmailMessage({ to, subject, text });
+}

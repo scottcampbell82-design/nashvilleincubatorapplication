@@ -21,6 +21,8 @@ export const config = {
   openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
   jwtSecret: process.env.JWT_SECRET || "",
   adminEmail: process.env.ADMIN_EMAIL || "",
+  loginAlertEnabled: String(process.env.LOGIN_ALERT_ENABLED || "true") === "true",
+  loginAlertEmail: process.env.LOGIN_ALERT_EMAIL || "scott@nashvilleincubator.org",
   smtpHost: process.env.SMTP_HOST || "",
   smtpPort: Number(process.env.SMTP_PORT || 587),
   smtpSecure: String(process.env.SMTP_SECURE || "false") === "true",

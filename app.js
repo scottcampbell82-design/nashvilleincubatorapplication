@@ -888,15 +888,18 @@ async function improveDraft(question, draftText, currentScore) {
 
 async function callAI(payload) {
   try {
-    if (config.AI_ENDPOINT) {
-      const json = await apiFetchUrl(config.AI_ENDPOINT, {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-      return json.output || "";
-    }
+    const aiEndpoint = endpointUrl(config.AI_ENDPOINT, "/ai");
+    const json = await apiFetchUrl(aiEndpoint, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    return json.output || "";
+  } catch {
+    // fall through to optional direct-browser OpenAI fallback
+  }
 
-    if (config.OPENAI_API_KEY) {
+  if (config.OPENAI_API_KEY) {
+    try {
       const messages = buildOpenAiMessages(payload);
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -914,9 +917,9 @@ async function callAI(payload) {
       if (!res.ok) return "";
       const data = await res.json();
       return data.choices?.[0]?.message?.content?.trim() || "";
+    } catch {
+      return "";
     }
-  } catch {
-    return "";
   }
 
   return "";
@@ -937,10 +940,9 @@ function buildOpenAiMessages(payload) {
 }
 
 async function sendNotification(event, payload) {
-  if (!config.NOTIFICATION_WEBHOOK_URL) return false;
-
   try {
-    await apiFetchUrl(config.NOTIFICATION_WEBHOOK_URL, {
+    const notifyEndpoint = endpointUrl(config.NOTIFICATION_WEBHOOK_URL, "/notify");
+    await apiFetchUrl(notifyEndpoint, {
       method: "POST",
       body: JSON.stringify({
         event,
@@ -974,36 +976,34 @@ async function exportApplication() {
 
   const fullCompiled = `${schoolHeading}${compiled}`;
 
-  if (config.GOOGLE_DOC_WEBHOOK_URL) {
-    try {
-      const sections = QUESTION_BANK.map((q, idx) => ({
-        index: idx + 1,
-        questionId: q.id,
-        title: q.title,
-        score: getResponse(q.id).score?.level || "not_scored"
-      }));
+  try {
+    const sections = QUESTION_BANK.map((q, idx) => ({
+      index: idx + 1,
+      questionId: q.id,
+      title: q.title,
+      score: getResponse(q.id).score?.level || "not_scored"
+    }));
 
-      const json = await apiFetch(`/applications/${currentApplicationId}/google-doc`, {
-        method: "POST",
-        body: JSON.stringify({
-          title: `${state.style.schoolName || "TN Charter School"} Application Draft - ${new Date().toLocaleDateString()}`,
-          body: fullCompiled,
-          sections
-        })
+    const json = await apiFetch(`/applications/${currentApplicationId}/google-doc`, {
+      method: "POST",
+      body: JSON.stringify({
+        title: `${state.style.schoolName || "TN Charter School"} Application Draft - ${new Date().toLocaleDateString()}`,
+        body: fullCompiled,
+        sections
+      })
+    });
+    if (json.url) {
+      currentDocs.unshift({
+        title: `${state.style.schoolName || "TN Charter School"} Application Draft - ${new Date().toLocaleDateString()}`,
+        url: json.url,
+        createdAt: new Date().toISOString()
       });
-      if (json.url) {
-        currentDocs.unshift({
-          title: `${state.style.schoolName || "TN Charter School"} Application Draft - ${new Date().toLocaleDateString()}`,
-          url: json.url,
-          createdAt: new Date().toISOString()
-        });
-        renderGeneratedDocs();
-        window.open(json.url, "_blank", "noopener,noreferrer");
-        return;
-      }
-    } catch {
-      // continue to fallback
+      renderGeneratedDocs();
+      window.open(json.url, "_blank", "noopener,noreferrer");
+      return;
     }
+  } catch {
+    // continue to fallback
   }
 
   try {
@@ -1191,7 +1191,7 @@ async function rawFetch(path, options = {}) {
   try {
     response = await fetch(`${base}${path}`, { ...options, headers });
   } catch {
-    throw new Error(`Cannot reach backend at ${base}. Start backend and verify ALLOWED_ORIGIN/CORS.`);
+    throw new Error(`Cannot reach backend at ${base}. Set BACKEND_BASE_URL to your deployed API URL and verify CORS.`);
   }
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -1231,13 +1231,35 @@ async function apiFetchUrl(url, options = {}) {
 }
 
 function backendBaseUrl() {
-  const source = config.AI_ENDPOINT || config.NOTIFICATION_WEBHOOK_URL || config.GOOGLE_DOC_WEBHOOK_URL || "http://localhost:8787/ai";
-  try {
-    const parsed = new URL(source);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return "http://localhost:8787";
+  if (config.BACKEND_BASE_URL) {
+    return String(config.BACKEND_BASE_URL).replace(/\/$/, "");
   }
+
+  const source = config.AI_ENDPOINT || config.NOTIFICATION_WEBHOOK_URL || config.GOOGLE_DOC_WEBHOOK_URL || "";
+  if (source) {
+    try {
+      const parsed = new URL(source);
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parts.length) {
+        parts.pop();
+      }
+      const pathPrefix = parts.length ? `/${parts.join("/")}` : "";
+      return `${parsed.protocol}//${parsed.host}${pathPrefix}`;
+    } catch {
+      // continue
+    }
+  }
+
+  if (typeof window !== "undefined" && window.location?.origin?.startsWith("http")) {
+    return `${window.location.origin}/api`;
+  }
+
+  return "http://localhost:8787";
+}
+
+function endpointUrl(configured, fallbackPath) {
+  if (configured) return configured;
+  return `${backendBaseUrl()}${fallbackPath}`;
 }
 
 function loadState() {

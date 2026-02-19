@@ -1,16 +1,17 @@
 window.SURVEY_CONFIG = {
-  // Local backend endpoint for AI drafting/scoring/improving.
-  AI_ENDPOINT: "http://localhost:8787/ai",
+  // Deploy this to your public backend URL, e.g. https://api.yourapp.com
+  // If blank, frontend tries same-origin /api in browser-hosted deployments.
+  BACKEND_BASE_URL: "",
 
-  // Optional fallback (browser-direct OpenAI call; not recommended for production).
+  // Optional explicit endpoint overrides (usually leave blank when using BACKEND_BASE_URL).
+  AI_ENDPOINT: "",
+
+  // Optional browser-direct OpenAI fallback (not recommended for production).
   OPENAI_API_KEY: "",
   OPENAI_MODEL: "gpt-4o-mini",
 
-  // Local backend endpoint that sends coach/applicant emails.
-  NOTIFICATION_WEBHOOK_URL: "http://localhost:8787/notify",
-
-  // Local backend endpoint that creates Google Docs and returns a URL.
-  GOOGLE_DOC_WEBHOOK_URL: "http://localhost:8787/google-doc",
+  NOTIFICATION_WEBHOOK_URL: "",
+  GOOGLE_DOC_WEBHOOK_URL: "",
 
   // Optional: direct URL to editable budget sheet template.
   BUDGET_SHEET_URL: ""
