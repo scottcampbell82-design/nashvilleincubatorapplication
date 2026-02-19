@@ -2,7 +2,9 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
-const DATA_DIR = path.resolve(process.cwd(), "data");
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.resolve(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "store.json");
 
 const EMPTY_STORE = {

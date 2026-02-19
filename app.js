@@ -198,6 +198,7 @@ const els = {
   showLoginBtn: document.getElementById("showLoginBtn"),
   showRegisterBtn: document.getElementById("showRegisterBtn"),
   showForgotBtn: document.getElementById("showForgotBtn"),
+  backendConfigPanel: document.getElementById("backendConfigPanel"),
   loginEmail: document.getElementById("loginEmail"),
   loginPassword: document.getElementById("loginPassword"),
   registerName: document.getElementById("registerName"),
@@ -222,7 +223,7 @@ init();
 
 async function init() {
   bindAuthEvents();
-  hydrateBackendUrlInput();
+  configureBackendControls();
 
   if (!authSession?.token) {
     showAuthMode("login");
@@ -260,6 +261,24 @@ async function init() {
   renderHeaderUser();
   renderAll();
   showAppShell();
+}
+
+function shouldShowBackendControls() {
+  const params = new URLSearchParams(window.location.search);
+  const forced = params.get("backend");
+  if (forced === "1") return true;
+  if (String(config.SHOW_BACKEND_CONFIG || "").toLowerCase() === "true") return true;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+function configureBackendControls() {
+  const show = shouldShowBackendControls();
+  if (!els.backendConfigPanel) return;
+  els.backendConfigPanel.classList.toggle("hidden", !show);
+  if (show) {
+    hydrateBackendUrlInput();
+  }
 }
 
 function bindEvents() {
@@ -529,6 +548,7 @@ function bindAuthEvents() {
   els.showRegisterBtn.addEventListener("click", () => showAuthMode("register"));
   els.showForgotBtn.addEventListener("click", () => showAuthMode("forgot"));
   els.saveBackendUrlBtn.addEventListener("click", () => {
+    if (!shouldShowBackendControls()) return;
     const value = String(els.backendBaseUrlInput.value || "").trim().replace(/\/$/, "");
     if (!value) {
       localStorage.removeItem(BACKEND_OVERRIDE_KEY);
@@ -555,7 +575,12 @@ function bindAuthEvents() {
       setAuthSession(result);
       window.location.reload();
     } catch (error) {
-      els.authStatus.textContent = error.message;
+      const message = String(error?.message || "Login failed.");
+      if (message.includes("Invalid email or password")) {
+        els.authStatus.textContent = `${message} If this account was created before a backend redeploy, register again once, then set backend DATA_DIR to persistent storage.`;
+      } else {
+        els.authStatus.textContent = message;
+      }
     }
   });
 
@@ -632,6 +657,7 @@ function showAppShell() {
 }
 
 function hydrateBackendUrlInput() {
+  if (!els.backendBaseUrlInput) return;
   els.backendBaseUrlInput.value = backendBaseUrl();
 }
 
@@ -1627,7 +1653,7 @@ async function apiFetchUrl(url, options = {}) {
 }
 
 function backendBaseUrl() {
-  const override = localStorage.getItem(BACKEND_OVERRIDE_KEY);
+  const override = shouldShowBackendControls() ? localStorage.getItem(BACKEND_OVERRIDE_KEY) : "";
   if (override) {
     return String(override).replace(/\/$/, "");
   }
