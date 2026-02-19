@@ -1,5 +1,5 @@
 window.SURVEY_CONFIG = {
-  BACKEND_BASE_URL: "",
+  BACKEND_BASE_URL: "https://nashvilleincubatorapplication.onrender.com",
   AI_ENDPOINT: "",
   OPENAI_API_KEY: "",
   OPENAI_MODEL: "gpt-4o-mini",
