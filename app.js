@@ -937,6 +937,194 @@ async function improveDraft(question, draftText, currentScore) {
   return buildImprovedFallbackDraft(question, draftText, currentScore);
 }
 
+async function checkAlignment(question, draftText) {
+  const payload = {
+    task: "alignment_check",
+    question,
+    draftText,
+    rubric: question.rubric,
+    style: state.style,
+    alignmentContext: buildAlignmentContext(question.id)
+  };
+
+  const aiRaw = await callAI(payload);
+  if (aiRaw) {
+    const parsed = safeJson(aiRaw);
+    if (parsed && ["aligned", "partial", "misaligned"].includes(parsed.overall)) {
+      const findings = Array.isArray(parsed.findings)
+        ? parsed.findings
+          .filter((f) => f && f.issue)
+          .slice(0, 5)
+          .map((f) => ({
+            severity: ["high", "medium", "low"].includes(f.severity) ? f.severity : "medium",
+            issue: String(f.issue || "").trim(),
+            suggestion: String(f.suggestion || "").trim(),
+            referenceQuestionId: String(f.referenceQuestionId || "").trim(),
+            referenceTitle: String(f.referenceTitle || "").trim()
+          }))
+        : [];
+
+      return {
+        overall: parsed.overall,
+        summary: parsed.summary || "Alignment review completed.",
+        findings
+      };
+    }
+  }
+
+  return heuristicAlignmentCheck(question, draftText);
+}
+
+function buildAlignmentContext(currentQuestionId) {
+  const schoolName = state.style.schoolName || "";
+  const missionQuestion = QUESTION_BANK.find((q) => q.id === "q01");
+  const goalsQuestion = QUESTION_BANK.find((q) => q.id === "q22");
+  const populationQuestion = QUESTION_BANK.find((q) => q.id === "q03");
+
+  const mission = missionQuestion ? getResponse(missionQuestion.id).draftText || "" : "";
+  const goals = goalsQuestion ? getResponse(goalsQuestion.id).draftText || "" : "";
+  const targetPopulation = populationQuestion ? getResponse(populationQuestion.id).draftText || "" : "";
+
+  const completed = QUESTION_BANK
+    .filter((q) => q.id !== currentQuestionId)
+    .map((q) => ({ question: q, response: getResponse(q.id) }))
+    .filter(({ response }) => response.completed && response.draftText)
+    .slice(0, 30)
+    .map(({ question, response }) => ({
+      questionId: question.id,
+      title: question.title,
+      section: question.section,
+      score: response.score?.level || "not_scored",
+      text: summarizeForAlignment(response.draftText, 360)
+    }));
+
+  return {
+    schoolName,
+    mission: summarizeForAlignment(mission, 520),
+    targetPopulation: summarizeForAlignment(targetPopulation, 420),
+    goals: summarizeForAlignment(goals, 520),
+    completedResponses: completed
+  };
+}
+
+function summarizeForAlignment(text, maxChars) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  if (clean.length <= maxChars) return clean;
+  return `${clean.slice(0, maxChars).trim()}...`;
+}
+
+function heuristicAlignmentCheck(question, draftText) {
+  const context = buildAlignmentContext(question.id);
+  const findings = [];
+
+  const current = String(draftText || "").trim();
+  const lower = current.toLowerCase();
+  const missionOverlap = keywordOverlap(lower, context.mission.toLowerCase());
+  const goalsOverlap = keywordOverlap(lower, context.goals.toLowerCase());
+  const targetOverlap = keywordOverlap(lower, context.targetPopulation.toLowerCase());
+
+  if (context.mission && missionOverlap < 0.12) {
+    findings.push({
+      severity: "high",
+      issue: "This response does not clearly connect to the mission statement.",
+      suggestion: "Reference the mission directly and explain how this section advances it.",
+      referenceQuestionId: "q01",
+      referenceTitle: "Mission Statement"
+    });
+  }
+
+  if (context.targetPopulation && targetOverlap < 0.1) {
+    findings.push({
+      severity: "medium",
+      issue: "The response is not clearly anchored to the defined target student population.",
+      suggestion: "Name the target students and show how this plan addresses their specific needs.",
+      referenceQuestionId: "q03",
+      referenceTitle: "Target Population"
+    });
+  }
+
+  if (context.goals && goalsOverlap < 0.1 && !/\d/.test(current)) {
+    findings.push({
+      severity: "medium",
+      issue: "The response lacks measurable linkage to academic goals.",
+      suggestion: "Add at least one concrete metric and timeline that align to your goals.",
+      referenceQuestionId: "q22",
+      referenceTitle: "Academic Goals"
+    });
+  }
+
+  if (context.schoolName && !lower.includes(context.schoolName.toLowerCase())) {
+    findings.push({
+      severity: "low",
+      issue: "School identity language is inconsistent or missing.",
+      suggestion: `Use "${context.schoolName}" explicitly to keep language consistent across sections.`,
+      referenceQuestionId: "",
+      referenceTitle: ""
+    });
+  }
+
+  const overall = findings.some((f) => f.severity === "high")
+    ? "misaligned"
+    : findings.length
+      ? "partial"
+      : "aligned";
+
+  return {
+    overall,
+    summary: overall === "aligned"
+      ? "This response appears aligned to mission, goals, and target population."
+      : "Alignment gaps were identified. Resolve flagged issues to keep the application coherent.",
+    findings
+  };
+}
+
+function keywordOverlap(aText, bText) {
+  if (!aText || !bText) return 0;
+  const a = new Set(extractKeywords(aText));
+  const b = new Set(extractKeywords(bText));
+  if (!a.size || !b.size) return 0;
+  let overlap = 0;
+  a.forEach((word) => {
+    if (b.has(word)) overlap += 1;
+  });
+  return overlap / Math.max(Math.min(a.size, b.size), 1);
+}
+
+function extractKeywords(text) {
+  const stopWords = new Set([
+    "about", "after", "again", "align", "aligned", "also", "because", "before", "being", "between", "build", "charter", "could",
+    "each", "from", "have", "into", "mission", "model", "more", "must", "need", "other", "question", "response", "school", "section",
+    "should", "state", "student", "students", "their", "there", "these", "they", "this", "through", "using", "what", "when", "where", "will", "with"
+  ]);
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !stopWords.has(w))
+    .slice(0, 120);
+}
+
+function renderAlignmentPanel(alignment) {
+  els.alignmentPanel.classList.remove("hidden");
+  const badgeMap = {
+    aligned: { label: "Aligned", className: "align-good" },
+    partial: { label: "Partially Aligned", className: "align-partial" },
+    misaligned: { label: "Misaligned", className: "align-bad" }
+  };
+  const meta = badgeMap[alignment.overall] || badgeMap.partial;
+  els.alignmentBadge.textContent = meta.label;
+  els.alignmentBadge.className = meta.className;
+  els.alignmentSummary.textContent = alignment.summary || "";
+  els.alignmentFindings.innerHTML = (alignment.findings || []).length
+    ? alignment.findings.map((f) => {
+      const reference = [f.referenceQuestionId, f.referenceTitle].filter(Boolean).join(" ");
+      const suggestion = f.suggestion ? ` Suggested fix: ${f.suggestion}` : "";
+      return `<li><strong>${escapeHtml((f.severity || "medium").toUpperCase())}:</strong> ${escapeHtml(f.issue || "")}${escapeHtml(suggestion)}${reference ? ` (Ref: ${escapeHtml(reference)})` : ""}</li>`;
+    }).join("")
+    : "<li>No alignment issues flagged.</li>";
+}
+
 function buildImprovedFallbackDraft(question, draftText, currentScore) {
   const schoolName = state.style.schoolName || "The proposed school";
   const stylePrefix = styleLeadSentence(schoolName);
@@ -1093,7 +1281,9 @@ function buildOpenAiMessages(payload) {
     "You are an expert Tennessee charter application coach.",
     "Use clear, specific language aligned to rubric-based scoring.",
     "When scoring, return JSON only with keys: level, reason, feedback.",
-    "Valid level values: meet, partial, no."
+    "Valid level values: meet, partial, no.",
+    "When doing alignment checks, return JSON only with keys: overall, summary, findings.",
+    "Valid overall values: aligned, partial, misaligned."
   ].join(" ");
 
   return [
