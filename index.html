@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TN Incubator Charter Application App</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <section id="authShell" class="auth-shell">
+    <div class="auth-card">
+      <p class="eyebrow">Secure Access</p>
+      <h2>Login to TN Incubator Charter Application App</h2>
+      <div class="auth-tabs">
+        <button id="showLoginBtn" class="btn btn-soft" type="button">Login</button>
+        <button id="showRegisterBtn" class="btn btn-soft" type="button">Register</button>
+        <button id="showForgotBtn" class="btn btn-soft" type="button">Forgot Password</button>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <label>Email <input id="loginEmail" type="email" required /></label>
+        <label>Password <input id="loginPassword" type="password" required /></label>
+        <button class="btn btn-primary" type="submit">Login</button>
+      </form>
+
+      <form id="registerForm" class="auth-form hidden">
+        <label>Name <input id="registerName" type="text" required /></label>
+        <label>Email <input id="registerEmail" type="email" required /></label>
+        <label>Password (8+ chars) <input id="registerPassword" type="password" minlength="8" required /></label>
+        <button class="btn btn-primary" type="submit">Create Account</button>
+      </form>
+
+      <form id="forgotForm" class="auth-form hidden">
+        <label>Email <input id="forgotEmail" type="email" required /></label>
+        <button class="btn btn-primary" type="submit">Send Reset Link</button>
+      </form>
+
+      <form id="resetForm" class="auth-form hidden">
+        <label>Reset Token <input id="resetToken" type="text" required /></label>
+        <label>New Password (8+ chars) <input id="resetPassword" type="password" minlength="8" required /></label>
+        <button class="btn btn-primary" type="submit">Reset Password</button>
+      </form>
+
+      <p id="authStatus" class="hint" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <main id="appShell" class="layout hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Tennessee Charter Authoring</p>
+        <h1>TN Incubator Charter Application App</h1>
+        <p class="subtitle">Draft, score, revise, and assemble a full application aligned to the Tennessee rubric.</p>
+        <p id="userBadge" class="hint"></p>
+      </div>
+      <div class="top-actions">
+        <button id="adminOverviewBtn" class="btn btn-soft hidden">Admin Overview</button>
+        <button id="manageCoachesBtn" class="btn btn-soft">Manage Coaches</button>
+        <button id="exportDocBtn" class="btn btn-primary">Build Google Doc Draft</button>
+        <button id="logoutBtn" class="btn btn-soft">Logout</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>Applications</h2>
+      <div class="notify-row">
+        <select id="applicationSelect"></select>
+        <button id="newApplicationBtn" class="btn btn-soft">New Application</button>
+      </div>
+      <p class="hint">Current application is shared with selected coaches and visible to admin.</p>
+      <div id="generatedDocsList" class="hint"></div>
+    </section>
+
+    <section class="progress-card">
+      <div class="progress-head">
+        <h2>Progress</h2>
+        <strong id="completionLabel">0% complete</strong>
+      </div>
+      <div class="meter"><div id="completionMeter" class="meter-fill"></div></div>
+      <div class="score-grid" id="scoreGrid"></div>
+    </section>
+
+    <section class="style-card card">
+      <h2>Writing Style Profile</h2>
+      <p class="hint">Responses are generated and revised to match this voice.</p>
+      <div class="style-grid">
+        <label>
+          Tone
+          <select id="styleTone">
+            <option value="formal">Formal</option>
+            <option value="conversational">Conversational</option>
+            <option value="persuasive">Persuasive</option>
+            <option value="technical">Technical</option>
+          </select>
+        </label>
+        <label>
+          Sentence Length
+          <select id="styleLength">
+            <option value="mixed">Mixed</option>
+            <option value="concise">Concise</option>
+            <option value="detailed">Detailed</option>
+          </select>
+        </label>
+        <label>
+          Point of View
+          <select id="stylePov">
+            <option value="first-person plural">First-person plural (we)</option>
+            <option value="third-person organizational">Third-person organizational</option>
+          </select>
+        </label>
+        <label>
+          Signature Phrases
+          <input id="stylePhrases" type="text" placeholder="e.g., scholar growth, family partnership" />
+        </label>
+        <label>
+          Name of the School
+          <input id="schoolName" type="text" placeholder="e.g., The Gate School" />
+        </label>
+        <label>
+          Applicant Name
+          <input id="applicantName" type="text" placeholder="Your name" />
+        </label>
+        <label>
+          Applicant Email
+          <input id="applicantEmail" type="email" placeholder="you@organization.org" />
+        </label>
+      </div>
+      <button id="saveStyleBtn" class="btn btn-soft">Save Style</button>
+    </section>
+
+    <section class="workspace">
+      <aside class="question-nav card">
+        <div class="qnav-head">
+          <h2>Questions</h2>
+          <small id="questionCount"></small>
+        </div>
+        <ul id="questionList"></ul>
+      </aside>
+
+      <article class="editor card">
+        <div class="editor-head">
+          <p id="questionSection" class="eyebrow"></p>
+          <h2 id="questionTitle"></h2>
+          <p id="questionPrompt" class="hint"></p>
+        </div>
+
+        <div class="rubric-box">
+          <h3>Rubric Targets</h3>
+          <ul id="rubricList"></ul>
+        </div>
+
+        <div class="intake-box">
+          <h3>Simple Intake Questions</h3>
+          <div id="intakeFields" class="intake-grid"></div>
+          <button id="saveIntakeBtn" class="btn btn-soft">Save Intake</button>
+        </div>
+
+        <div class="mode-box">
+          <h3>Drafting</h3>
+          <div class="mode-row">
+            <label><input type="radio" name="draftMode" value="assist" checked /> AI Assist</label>
+            <label><input type="radio" name="draftMode" value="own" /> Write your own and score it</label>
+          </div>
+          <textarea id="responseText" rows="14" placeholder="Draft response for this question..."></textarea>
+          <div class="action-row">
+            <button id="generateBtn" class="btn btn-primary">Generate Draft</button>
+            <button id="scoreBtn" class="btn btn-soft">Score Draft</button>
+            <button id="improveBtn" class="btn btn-soft">Improve to Meet Standard</button>
+            <button id="completeBtn" class="btn btn-success">Mark Complete</button>
+          </div>
+        </div>
+
+        <section id="scorePanel" class="score-panel hidden" aria-live="polite">
+          <h3>Score & Feedback</h3>
+          <p><strong id="scoreBadge"></strong></p>
+          <p id="scoreReason"></p>
+          <p id="scoreFeedback"></p>
+        </section>
+
+        <section id="redlinePanel" class="redline-panel hidden">
+          <h3>Suggested Revisions (Redline)</h3>
+          <div id="redlineDiff" class="redline-diff"></div>
+          <button id="acceptRedlineBtn" class="btn btn-primary">Accept Suggested Changes</button>
+        </section>
+
+        <section class="notify-panel">
+          <h3>Send to Coach</h3>
+          <div class="notify-row">
+            <select id="coachSelect"></select>
+            <button id="notifyCoachBtn" class="btn btn-soft">Notify Coach for Review</button>
+          </div>
+          <p id="notifyStatus" class="hint"></p>
+        </section>
+
+        <section class="finance-panel" id="financePanel">
+          <h3>Finance Workspace</h3>
+          <p class="hint">Use the generic starter budget, then open an editable Google Sheet for finance revisions.</p>
+          <div class="budget-actions">
+            <button id="downloadBudgetBtn" class="btn btn-soft">Download Generic Budget CSV</button>
+            <button id="openBudgetSheetBtn" class="btn btn-soft">Open Budget Google Sheet</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Category</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr>
+              </thead>
+              <tbody id="budgetTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </article>
+    </section>
+
+    <section class="coach-review card">
+      <h2>Coach Review Console</h2>
+      <p class="hint">Coach can review submitted questions and assign rubric score.</p>
+      <div class="review-grid">
+        <select id="reviewQuestionSelect"></select>
+        <select id="reviewScoreSelect">
+          <option value="meet">Meet Standard</option>
+          <option value="partial">Partially Meet Standard</option>
+          <option value="no">Do Not Meet Standard</option>
+        </select>
+        <textarea id="reviewComment" rows="4" placeholder="Coach comments..."></textarea>
+        <button id="submitReviewBtn" class="btn btn-primary">Submit Coach Review</button>
+      </div>
+      <p id="reviewStatus" class="hint"></p>
+    </section>
+
+    <section id="adminPanel" class="card hidden">
+      <h2>Admin Overview</h2>
+      <p class="hint">Admin can view all applications, users, and generated Google Doc sections.</p>
+      <div id="adminSummary"></div>
+    </section>
+
+    <dialog id="coachDialog">
+      <form method="dialog" id="coachForm">
+        <h3>Coach Directory (max 8)</h3>
+        <div class="coach-inputs">
+          <label>Name <input id="coachName" type="text" /></label>
+          <label>Email <input id="coachEmail" type="email" /></label>
+          <button id="addCoachBtn" type="button" class="btn btn-primary">Add Coach</button>
+        </div>
+        <ul id="coachList"></ul>
+        <menu>
+          <button class="btn btn-soft" value="close">Close</button>
+        </menu>
+      </form>
+    </dialog>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
