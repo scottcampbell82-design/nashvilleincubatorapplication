@@ -248,10 +248,14 @@ app.post("/notify", authenticateRequest, async (req, res) => {
 
 app.post("/applications/:id/google-doc", authenticateRequest, async (req, res) => {
   try {
-    getApplicationById({ user: req.user, id: req.params.id });
+    const application = getApplicationById({ user: req.user, id: req.params.id });
+    const sharedEmails = [
+      req.user?.email,
+      ...(application.coaches || []).map((c) => c.email)
+    ];
 
     const { title, body, sections } = req.body || {};
-    const created = await createGoogleDoc({ title, body });
+    const created = await createGoogleDoc({ title, body, sharedEmails });
 
     saveGeneratedDoc({
       user: req.user,
@@ -273,7 +277,11 @@ app.post("/applications/:id/google-doc", authenticateRequest, async (req, res) =
 app.post("/applications/:id/google-doc/sync", authenticateRequest, async (req, res) => {
   try {
     const applicationId = req.params.id;
-    getApplicationById({ user: req.user, id: applicationId });
+    const application = getApplicationById({ user: req.user, id: applicationId });
+    const sharedEmails = [
+      req.user?.email,
+      ...(application.coaches || []).map((c) => c.email)
+    ];
     const { title, body, sections } = req.body || {};
     if (!title || !body) {
       return res.status(400).json({ error: "title and body are required" });
@@ -283,8 +291,8 @@ app.post("/applications/:id/google-doc/sync", authenticateRequest, async (req, r
     const masterDoc = docs.find((d) => d.isMaster === true);
 
     const result = masterDoc?.documentId
-      ? await updateGoogleDoc({ documentId: masterDoc.documentId, title, body })
-      : await createGoogleDoc({ title, body });
+      ? await updateGoogleDoc({ documentId: masterDoc.documentId, title, body, sharedEmails })
+      : await createGoogleDoc({ title, body, sharedEmails });
 
     const record = upsertMasterDocRecord({
       user: req.user,
@@ -310,8 +318,12 @@ app.post("/google-doc", authenticateRequest, async (req, res) => {
       return res.status(400).json({ error: "applicationId is required" });
     }
 
-    getApplicationById({ user: req.user, id: applicationId });
-    const created = await createGoogleDoc({ title, body });
+    const application = getApplicationById({ user: req.user, id: applicationId });
+    const sharedEmails = [
+      req.user?.email,
+      ...(application.coaches || []).map((c) => c.email)
+    ];
+    const created = await createGoogleDoc({ title, body, sharedEmails });
 
     saveGeneratedDoc({
       user: req.user,

@@ -83,6 +83,7 @@ cp .env.example .env
   - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
   - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
   - Optional `GOOGLE_DRIVE_FOLDER_ID`, `GOOGLE_DOC_SHARE_WITH`
+  - Generated docs are created by the service account, then shared with the logged-in user email (and coaches on that application).
 
 4. Start backend:
 

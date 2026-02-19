@@ -306,10 +306,16 @@ function bindEvents() {
     }
 
     if (mode === "assist") {
-      const draft = await generateDraft(question, response);
-      response.draftText = draft;
-      els.responseText.value = draft;
-      response.alignment = await checkAlignment(question, draft);
+      try {
+        const draft = await generateDraft(question, response);
+        response.draftText = draft;
+        els.responseText.value = draft;
+        response.alignment = await checkAlignment(question, draft);
+        els.notifyStatus.textContent = "";
+      } catch (error) {
+        els.notifyStatus.textContent = error?.message || "AI generation is not available right now.";
+        return;
+      }
       persist();
       renderCurrentQuestion();
     }
@@ -881,26 +887,8 @@ async function generateDraft(question, response) {
   };
 
   const aiText = await callAI(payload);
-  if (aiText) return aiText;
-
-  const intakeLines = (response.intake || []).filter(Boolean).map((v) => `- ${v}`).join("\n");
-  const schoolName = state.style.schoolName || "The proposed school";
-  const styleLine = `Tone: ${state.style.tone}; Length: ${state.style.length}; POV: ${state.style.pov}.`;
-
-  return [
-    `### ${question.title}`,
-    "",
-    `${schoolName} proposes a focused approach to ${question.section.toLowerCase()} that is aligned to the Tennessee charter application standards.`,
-    styleLine,
-    "",
-    "Key points from intake:",
-    intakeLines || "- Add intake details for a stronger draft.",
-    "",
-    "Rubric alignment:",
-    ...question.rubric.map((item) => `- ${item}`),
-    "",
-    "Implementation details, timelines, and accountability metrics will be finalized in the full application narrative."
-  ].join("\n");
+  if (aiText) return cleanDraftText(aiText);
+  throw new Error("AI generation is not available right now.");
 }
 
 async function scoreDraft(question, draftText) {
@@ -924,6 +912,14 @@ async function scoreDraft(question, draftText) {
   }
 
   const lower = draftText.toLowerCase();
+  if (isTemplateOrRubricEcho(draftText)) {
+    return {
+      level: "no",
+      reason: "Response appears to be a template or rubric echo, not a complete narrative answer.",
+      feedback: "Replace headings/rubric copy with a direct narrative response that includes concrete actions, metrics, owner, and timeline."
+    };
+  }
+
   let hits = 0;
   question.rubric.forEach((criterion) => {
     const words = criterion.toLowerCase().split(/\W+/).filter((w) => w.length > 4);
@@ -934,8 +930,9 @@ async function scoreDraft(question, draftText) {
   const wordCount = draftText.split(/\s+/).filter(Boolean).length;
   if (hasNumbers) hits += 1;
   if (wordCount > 220) hits += 1;
+  if (wordCount < 120) hits -= 1;
 
-  const level = hits >= 4 ? "meet" : hits >= 2 ? "partial" : "no";
+  const level = hits >= 5 ? "meet" : hits >= 3 ? "partial" : "no";
   return {
     level,
     reason: `Heuristic score based on rubric coverage (${hits} signals).`,
@@ -946,6 +943,32 @@ async function scoreDraft(question, draftText) {
           ? "Add clearer evidence, specific data points, and named owners/timelines for execution."
           : "Response is too broad. Address each rubric criterion directly with evidence and implementation detail."
   };
+}
+
+function isTemplateOrRubricEcho(text) {
+  const lower = String(text || "").toLowerCase();
+  if (!lower.trim()) return true;
+  const markers = [
+    "rubric alignment:",
+    "key points from intake:",
+    "implementation details, timelines, and accountability metrics will be finalized",
+    "## 1.",
+    "### mission statement"
+  ];
+  if (markers.some((m) => lower.includes(m))) return true;
+  const rubricPhraseHits = [
+    "response is clear, compelling, and fully aligned to the question",
+    "narrative connects mission, vision, and outcomes",
+    "evidence and rationale meet tennessee charter application expectations"
+  ].filter((p) => lower.includes(p)).length;
+  return rubricPhraseHits >= 2;
+}
+
+function cleanDraftText(text) {
+  let out = String(text || "").trim();
+  out = out.replace(/^#{1,6}\s+/gm, "");
+  out = out.replace(/\n{3,}/g, "\n\n");
+  return out.trim();
 }
 
 async function improveDraft(question, draftText, currentScore) {
@@ -1427,6 +1450,7 @@ async function autoSyncGoogleDocOnComplete() {
         currentDocs.unshift(nextDoc);
       }
       renderGeneratedDocs();
+      els.notifyStatus.innerHTML = `Section saved and synced to Google Doc: <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">Open Doc</a>`;
     }
   } catch (error) {
     els.notifyStatus.textContent = `Saved section locally. Google Doc auto-sync failed: ${error.message}`;

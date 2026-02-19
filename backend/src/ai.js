@@ -21,7 +21,8 @@ function promptForTask(payload) {
   if (task === "generate") {
     return [
       "Write a Tennessee charter application response that is aligned to the rubric.",
-      "Return plain text only.",
+      "Return plain text only (no markdown headings, no bullet list of rubric criteria).",
+      "Write 2-4 coherent paragraphs that can be pasted directly into the application answer field.",
       `Question section: ${question?.section || ""}`,
       `Question title: ${question?.title || ""}`,
       `Question prompt: ${question?.prompt || ""}`,
@@ -29,7 +30,8 @@ function promptForTask(payload) {
       `User intake: ${(intake || []).filter(Boolean).join(" | ")}`,
       `Style profile: tone=${style?.tone || "formal"}, length=${style?.length || "mixed"}, pov=${style?.pov || "first-person plural"}, phrases=${style?.phrases || "none"}`,
       `Cross-question context: ${JSON.stringify(alignmentContext || {})}`,
-      "Use concrete actions, ownership, and measurable indicators."
+      "Use concrete actions, ownership, measurable indicators, and timeline references.",
+      "Directly incorporate style profile and preferred phrases where natural."
     ].join("\n");
   }
 
@@ -48,7 +50,7 @@ function promptForTask(payload) {
   if (task === "improve") {
     return [
       "Revise the application response so it meets Tennessee rubric expectations.",
-      "Return plain text only.",
+      "Return plain text only (no markdown headings, no rubric list).",
       `Question prompt: ${question?.prompt || ""}`,
       `Rubric criteria: ${(question?.rubric || []).join(" | ")}`,
       `Current score: ${JSON.stringify(currentScore || {})}`,

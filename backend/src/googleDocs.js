@@ -16,7 +16,35 @@ function getAuth() {
   });
 }
 
-export async function createGoogleDoc({ title, body }) {
+function normalizeEmails(emails) {
+  return [...new Set((emails || [])
+    .map((e) => String(e || "").trim().toLowerCase())
+    .filter(Boolean))];
+}
+
+async function ensureFilePermissions({ drive, fileId, emails }) {
+  const targets = normalizeEmails(emails);
+  for (const email of targets) {
+    try {
+      await drive.permissions.create({
+        fileId,
+        requestBody: {
+          type: "user",
+          role: "writer",
+          emailAddress: email
+        },
+        sendNotificationEmail: false
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error || "");
+      if (!msg.includes("already has")) {
+        throw error;
+      }
+    }
+  }
+}
+
+export async function createGoogleDoc({ title, body, sharedEmails = [] }) {
   if (!title || !body) {
     throw new Error("title and body are required");
   }
@@ -57,17 +85,11 @@ export async function createGoogleDoc({ title, body }) {
     });
   }
 
-  if (config.googleDocShareWith) {
-    await drive.permissions.create({
-      fileId: documentId,
-      requestBody: {
-        type: "user",
-        role: "writer",
-        emailAddress: config.googleDocShareWith
-      },
-      sendNotificationEmail: false
-    });
-  }
+  await ensureFilePermissions({
+    drive,
+    fileId: documentId,
+    emails: [...sharedEmails, config.googleDocShareWith]
+  });
 
   return {
     documentId,
@@ -75,7 +97,7 @@ export async function createGoogleDoc({ title, body }) {
   };
 }
 
-export async function updateGoogleDoc({ documentId, title, body }) {
+export async function updateGoogleDoc({ documentId, title, body, sharedEmails = [] }) {
   if (!documentId || !body) {
     throw new Error("documentId and body are required");
   }
@@ -115,6 +137,12 @@ export async function updateGoogleDoc({ documentId, title, body }) {
       requestBody: { name: title }
     });
   }
+
+  await ensureFilePermissions({
+    drive,
+    fileId: documentId,
+    emails: [...sharedEmails, config.googleDocShareWith]
+  });
 
   return {
     documentId,
