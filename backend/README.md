@@ -39,6 +39,7 @@ Authenticated:
 - `DELETE /applications/:id/coaches/:coachId`
 - `POST /notify`
 - `POST /applications/:id/google-doc`
+- `POST /applications/:id/google-doc/sync` (upserts a single master doc and replaces full content)
 - `POST /google-doc` (compat route with `applicationId` in body)
 
 Admin only:

@@ -207,11 +207,23 @@ textarea {
 }
 
 .q-item {
+  width: 100%;
+  display: block;
   border: 1px solid #c7d6f3;
   border-radius: 10px;
   padding: 0.55rem;
   cursor: pointer;
   background: #fbfdff;
+  text-align: left;
+}
+
+.q-item > div,
+.q-item strong {
+  text-align: left;
+}
+
+.q-item strong {
+  display: block;
 }
 
 .q-item.active {
@@ -235,6 +247,7 @@ textarea {
 .notify-panel,
 .finance-panel,
 .score-panel,
+.alignment-panel,
 .redline-panel {
   border: 1px solid #d5e1f5;
   border-radius: 12px;
@@ -377,6 +390,18 @@ td {
 }
 
 .badge-no {
+  color: var(--bad);
+}
+
+.align-good {
+  color: var(--good);
+}
+
+.align-partial {
+  color: var(--warn);
+}
+
+.align-bad {
   color: var(--bad);
 }
 

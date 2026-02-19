@@ -74,3 +74,50 @@ export async function createGoogleDoc({ title, body }) {
     url: `https://docs.google.com/document/d/${documentId}/edit`
   };
 }
+
+export async function updateGoogleDoc({ documentId, title, body }) {
+  if (!documentId || !body) {
+    throw new Error("documentId and body are required");
+  }
+
+  const auth = getAuth();
+  const docs = google.docs({ version: "v1", auth });
+  const drive = google.drive({ version: "v3", auth });
+
+  const current = await docs.documents.get({ documentId });
+  const endIndex = current.data.body?.content?.at(-1)?.endIndex || 1;
+  const deleteEnd = Math.max(1, endIndex - 1);
+
+  const requests = [];
+  if (deleteEnd > 1) {
+    requests.push({
+      deleteContentRange: {
+        range: { startIndex: 1, endIndex: deleteEnd }
+      }
+    });
+  }
+
+  requests.push({
+    insertText: {
+      location: { index: 1 },
+      text: body
+    }
+  });
+
+  await docs.documents.batchUpdate({
+    documentId,
+    requestBody: { requests }
+  });
+
+  if (title) {
+    await drive.files.update({
+      fileId: documentId,
+      requestBody: { name: title }
+    });
+  }
+
+  return {
+    documentId,
+    url: `https://docs.google.com/document/d/${documentId}/edit`
+  };
+}

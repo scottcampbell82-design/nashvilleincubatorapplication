@@ -17,6 +17,13 @@
         <button id="showForgotBtn" class="btn btn-soft" type="button">Forgot Password</button>
       </div>
 
+      <div class="auth-form">
+        <label>Backend API Base URL
+          <input id="backendBaseUrlInput" type="url" placeholder="https://your-backend-domain.com" />
+        </label>
+        <button id="saveBackendUrlBtn" class="btn btn-soft" type="button">Save Backend URL</button>
+      </div>
+
       <form id="loginForm" class="auth-form">
         <label>Email <input id="loginEmail" type="email" required /></label>
         <label>Password <input id="loginPassword" type="password" required /></label>
@@ -166,6 +173,7 @@
             <button id="generateBtn" class="btn btn-primary">Generate Draft</button>
             <button id="scoreBtn" class="btn btn-soft">Score Draft</button>
             <button id="improveBtn" class="btn btn-soft">Improve to Meet Standard</button>
+            <button id="alignmentBtn" class="btn btn-soft">Check Alignment</button>
             <button id="completeBtn" class="btn btn-success">Mark Complete</button>
           </div>
         </div>
@@ -175,6 +183,13 @@
           <p><strong id="scoreBadge"></strong></p>
           <p id="scoreReason"></p>
           <p id="scoreFeedback"></p>
+        </section>
+
+        <section id="alignmentPanel" class="alignment-panel hidden" aria-live="polite">
+          <h3>Cross-Question Alignment</h3>
+          <p><strong id="alignmentBadge"></strong></p>
+          <p id="alignmentSummary"></p>
+          <ul id="alignmentFindings"></ul>
         </section>
 
         <section id="redlinePanel" class="redline-panel hidden">

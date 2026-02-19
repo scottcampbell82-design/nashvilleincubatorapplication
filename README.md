@@ -16,6 +16,7 @@ Secure browser app + backend for drafting, scoring, revising, and assembling Ten
   - user login info
   - Google doc and section metadata
 - Google Doc generation and finance budget tools
+- Automatic Google Doc sync when users mark a question complete (updates prior question version in master doc)
 
 ## Project structure
 

@@ -156,6 +156,48 @@ export function saveGeneratedDoc({ user, applicationId, title, url, documentId, 
   });
 }
 
+export function upsertMasterDocRecord({ user, applicationId, title, url, documentId, sections }) {
+  return withStore((store) => {
+    const app = store.applications.find((a) => a.id === applicationId);
+    if (!app) {
+      throw new Error("Application not found");
+    }
+    if (!canAccessApplication(user, app)) {
+      throw new Error("Access denied");
+    }
+
+    const existing = store.docs.find((d) => d.applicationId === applicationId && d.isMaster === true);
+    const now = new Date().toISOString();
+
+    if (existing) {
+      existing.title = title;
+      existing.url = url;
+      existing.documentId = documentId;
+      existing.sections = Array.isArray(sections) ? sections : [];
+      existing.updatedAt = now;
+      app.updatedAt = now;
+      return existing;
+    }
+
+    const doc = {
+      id: uid("doc"),
+      applicationId,
+      title,
+      url,
+      documentId,
+      sections: Array.isArray(sections) ? sections : [],
+      createdByUserId: user.id,
+      createdAt: now,
+      updatedAt: now,
+      isMaster: true
+    };
+
+    store.docs.push(doc);
+    app.updatedAt = now;
+    return doc;
+  });
+}
+
 export function listDocsForApplication({ user, applicationId }) {
   const store = readStore();
   const app = store.applications.find((a) => a.id === applicationId);
@@ -166,7 +208,13 @@ export function listDocsForApplication({ user, applicationId }) {
     throw new Error("Access denied");
   }
 
-  return store.docs.filter((d) => d.applicationId === applicationId);
+  return store.docs
+    .filter((d) => d.applicationId === applicationId)
+    .sort((a, b) => {
+      const ad = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const bd = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return bd - ad;
+    });
 }
 
 export function getAdminOverview() {

@@ -4,7 +4,7 @@ import { config } from "./config.js";
 import { runAiTask } from "./ai.js";
 import { buildResetEmailContent } from "./devMailer.js";
 import { sendEmailMessage, sendEventEmail, sendLoginAlertEmail } from "./email.js";
-import { createGoogleDoc } from "./googleDocs.js";
+import { createGoogleDoc, updateGoogleDoc } from "./googleDocs.js";
 import {
   addCoachToApplication,
   createApplication,
@@ -14,6 +14,7 @@ import {
   listDocsForApplication,
   removeCoachFromApplication,
   saveGeneratedDoc,
+  upsertMasterDocRecord,
   updateApplicationState
 } from "./applications.js";
 import {
@@ -53,7 +54,17 @@ app.use(cors({
 app.use(express.json({ limit: "3mb" }));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "tn-incubator-charter-backend" });
+  const smtpConfigured = Boolean(
+    config.smtpHost && config.smtpUser && config.smtpPass && config.emailFrom
+  );
+
+  res.json({
+    ok: true,
+    service: "tn-incubator-charter-backend",
+    loginAlertEnabled: config.loginAlertEnabled,
+    loginAlertEmailConfigured: Boolean(config.loginAlertEmail),
+    smtpConfigured
+  });
 });
 
 async function notifyLoginAlert(user, req) {
@@ -255,6 +266,39 @@ app.post("/applications/:id/google-doc", authenticateRequest, async (req, res) =
   } catch (error) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "Google doc endpoint failed"
+    });
+  }
+});
+
+app.post("/applications/:id/google-doc/sync", authenticateRequest, async (req, res) => {
+  try {
+    const applicationId = req.params.id;
+    getApplicationById({ user: req.user, id: applicationId });
+    const { title, body, sections } = req.body || {};
+    if (!title || !body) {
+      return res.status(400).json({ error: "title and body are required" });
+    }
+
+    const docs = listDocsForApplication({ user: req.user, applicationId });
+    const masterDoc = docs.find((d) => d.isMaster === true);
+
+    const result = masterDoc?.documentId
+      ? await updateGoogleDoc({ documentId: masterDoc.documentId, title, body })
+      : await createGoogleDoc({ title, body });
+
+    const record = upsertMasterDocRecord({
+      user: req.user,
+      applicationId,
+      title,
+      url: result.url,
+      documentId: result.documentId,
+      sections
+    });
+
+    return res.json({ ...result, synced: true, doc: record });
+  } catch (error) {
+    return res.status(400).json({
+      error: error instanceof Error ? error.message : "Google doc sync endpoint failed"
     });
   }
 });

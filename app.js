@@ -1,5 +1,6 @@
 const APP_KEY = "tn_incubator_charter_app_v1";
 const AUTH_KEY = "tn_incubator_auth_v1";
+const BACKEND_OVERRIDE_KEY = "tn_backend_base_url_override";
 
 const config = window.SURVEY_CONFIG || {};
 
@@ -162,6 +163,10 @@ const els = {
   scoreBadge: document.getElementById("scoreBadge"),
   scoreReason: document.getElementById("scoreReason"),
   scoreFeedback: document.getElementById("scoreFeedback"),
+  alignmentPanel: document.getElementById("alignmentPanel"),
+  alignmentBadge: document.getElementById("alignmentBadge"),
+  alignmentSummary: document.getElementById("alignmentSummary"),
+  alignmentFindings: document.getElementById("alignmentFindings"),
   redlinePanel: document.getElementById("redlinePanel"),
   redlineDiff: document.getElementById("redlineDiff"),
   notifyStatus: document.getElementById("notifyStatus"),
@@ -201,6 +206,8 @@ const els = {
   forgotEmail: document.getElementById("forgotEmail"),
   resetToken: document.getElementById("resetToken"),
   resetPassword: document.getElementById("resetPassword"),
+  backendBaseUrlInput: document.getElementById("backendBaseUrlInput"),
+  saveBackendUrlBtn: document.getElementById("saveBackendUrlBtn"),
   userBadge: document.getElementById("userBadge"),
   logoutBtn: document.getElementById("logoutBtn"),
   applicationSelect: document.getElementById("applicationSelect"),
@@ -215,6 +222,7 @@ init();
 
 async function init() {
   bindAuthEvents();
+  hydrateBackendUrlInput();
 
   if (!authSession?.token) {
     showAuthMode("login");
@@ -282,7 +290,9 @@ function bindEvents() {
       const draft = await generateDraft(question, response);
       response.draftText = draft;
       els.responseText.value = draft;
+      response.alignment = await checkAlignment(question, draft);
       persist();
+      renderCurrentQuestion();
     }
   });
 
@@ -294,6 +304,7 @@ function bindEvents() {
 
     const score = await scoreDraft(question, response.draftText);
     response.score = score;
+    response.alignment = await checkAlignment(question, response.draftText);
     response.lastUpdated = new Date().toISOString();
     persist();
     renderAll();
@@ -312,15 +323,30 @@ function bindEvents() {
     els.redlinePanel.classList.remove("hidden");
   });
 
-  document.getElementById("acceptRedlineBtn").addEventListener("click", () => {
+  document.getElementById("alignmentBtn").addEventListener("click", async () => {
+    const question = QUESTION_BANK[currentIndex];
+    const response = getResponse(question.id);
+    const draftText = els.responseText.value.trim();
+    if (!draftText) return;
+    response.draftText = draftText;
+    response.alignment = await checkAlignment(question, draftText);
+    response.lastUpdated = new Date().toISOString();
+    persist();
+    renderCurrentQuestion();
+    renderQuestionList();
+  });
+
+  document.getElementById("acceptRedlineBtn").addEventListener("click", async () => {
     if (!pendingImprovedText) return;
     const question = QUESTION_BANK[currentIndex];
     const response = getResponse(question.id);
     response.draftText = pendingImprovedText;
+    response.alignment = await checkAlignment(question, pendingImprovedText);
     els.responseText.value = pendingImprovedText;
     pendingImprovedText = "";
     els.redlinePanel.classList.add("hidden");
     persist();
+    renderCurrentQuestion();
   });
 
   document.getElementById("completeBtn").addEventListener("click", async () => {
@@ -332,11 +358,13 @@ function bindEvents() {
     if (!response.score) {
       response.score = await scoreDraft(question, response.draftText);
     }
+    response.alignment = await checkAlignment(question, response.draftText);
 
     response.completed = true;
     response.readyForCoach = false;
     response.lastUpdated = new Date().toISOString();
     persist();
+    await autoSyncGoogleDocOnComplete();
     renderAll();
   });
 
@@ -500,6 +528,18 @@ function bindAuthEvents() {
   els.showLoginBtn.addEventListener("click", () => showAuthMode("login"));
   els.showRegisterBtn.addEventListener("click", () => showAuthMode("register"));
   els.showForgotBtn.addEventListener("click", () => showAuthMode("forgot"));
+  els.saveBackendUrlBtn.addEventListener("click", () => {
+    const value = String(els.backendBaseUrlInput.value || "").trim().replace(/\/$/, "");
+    if (!value) {
+      localStorage.removeItem(BACKEND_OVERRIDE_KEY);
+      els.authStatus.textContent = "Backend URL cleared. Using config/default resolution.";
+      hydrateBackendUrlInput();
+      return;
+    }
+
+    localStorage.setItem(BACKEND_OVERRIDE_KEY, value);
+    els.authStatus.textContent = `Backend URL saved: ${value}`;
+  });
 
   els.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -589,6 +629,10 @@ function showAuthShell() {
 function showAppShell() {
   els.authShell.classList.add("hidden");
   els.appShell.classList.remove("hidden");
+}
+
+function hydrateBackendUrlInput() {
+  els.backendBaseUrlInput.value = backendBaseUrl();
 }
 
 function renderAll() {
@@ -698,6 +742,15 @@ function renderCurrentQuestion() {
     els.scorePanel.classList.add("hidden");
   }
 
+  if (response.alignment) {
+    renderAlignmentPanel(response.alignment);
+  } else {
+    els.alignmentPanel.classList.add("hidden");
+    els.alignmentBadge.textContent = "";
+    els.alignmentSummary.textContent = "";
+    els.alignmentFindings.innerHTML = "";
+  }
+
   els.redlinePanel.classList.add("hidden");
   els.financePanel.style.display = q.financeTools ? "block" : "none";
 }
@@ -783,6 +836,7 @@ function getResponse(questionId) {
       intake: [],
       draftText: "",
       score: null,
+      alignment: null,
       completed: false,
       readyForCoach: false,
       coachReview: null
@@ -796,7 +850,8 @@ async function generateDraft(question, response) {
     task: "generate",
     question,
     intake: response.intake || [],
-    style: state.style
+    style: state.style,
+    alignmentContext: buildAlignmentContext(question.id)
   };
 
   const aiText = await callAI(payload);
@@ -873,17 +928,125 @@ async function improveDraft(question, draftText, currentScore) {
     question,
     draftText,
     currentScore,
-    style: state.style
+    style: state.style,
+    alignmentContext: buildAlignmentContext(question.id)
   };
 
   const aiText = await callAI(payload);
   if (aiText) return aiText;
+  return buildImprovedFallbackDraft(question, draftText, currentScore);
+}
 
-  const additions = question.rubric
-    .map((item, idx) => `${idx + 1}. ${item} Include a concrete metric, owner, and timeline.`)
-    .join("\n");
+function buildImprovedFallbackDraft(question, draftText, currentScore) {
+  const schoolName = state.style.schoolName || "The proposed school";
+  const stylePrefix = styleLeadSentence(schoolName);
+  const intake = getResponse(question.id).intake || [];
+  const intakeSummary = intake.filter(Boolean).slice(0, 3);
+  const metricPack = metricPackForSection(question.section);
+  const scoreSignal = currentScore?.level || "no";
 
-  return `${draftText}\n\nRevisions to meet standard:\n${additions}`;
+  const summarySentence = draftText.trim()
+    ? normalizeSentence(draftText.trim().split(/\n+/)[0])
+    : `${schoolName} will address this priority through a focused, evidence-driven implementation plan.`;
+
+  const paragraph1 = `${stylePrefix} ${summarySentence} This response directly addresses ${question.title.toLowerCase()} and defines the intended student impact with clear outcomes.`;
+  const paragraph2 = intakeSummary.length
+    ? `The plan is anchored in the following design commitments: ${intakeSummary.map(normalizeSentence).join(" ")}`
+    : `The plan is anchored in a clear student-centered model that aligns curriculum, instruction, and supports to the identified need.`;
+  const paragraph3 = `Implementation will be managed by ${metricPack.owner} and reviewed ${metricPack.cadence}. By ${metricPack.timeline}, the school will target ${metricPack.primaryMetric} and monitor ${metricPack.secondaryMetric} through recurring data reviews and documented action steps.`;
+  const paragraph4 = scoreSignal === "meet"
+    ? "To sustain performance, the team will maintain milestone-based monitoring and publish quarterly progress updates to leadership and families."
+    : "To meet standard, the team will document milestones, name accountable owners, and publish progress checkpoints with evidence of execution.";
+
+  return [
+    `${schoolName} - Revised Response for ${question.title}`,
+    "",
+    paragraph1,
+    "",
+    paragraph2,
+    "",
+    paragraph3,
+    "",
+    paragraph4
+  ].join("\n");
+}
+
+function metricPackForSection(section) {
+  const packs = {
+    "Executive Summary": {
+      owner: "the Executive Director",
+      cadence: "monthly",
+      timeline: "the end of Year 1",
+      primaryMetric: "at least 70% of students meeting annual growth targets",
+      secondaryMetric: "family retention above 90%"
+    },
+    "Community Need and Engagement": {
+      owner: "the Enrollment and Family Engagement Lead",
+      cadence: "biweekly",
+      timeline: "the close of the first enrollment cycle",
+      primaryMetric: "enrollment commitments meeting or exceeding 100% of Year 1 seats",
+      secondaryMetric: "documented family engagement participation above 75%"
+    },
+    "Academic Plan": {
+      owner: "the Principal",
+      cadence: "every six weeks",
+      timeline: "the end of Semester 1",
+      primaryMetric: "at least 65% of students meeting benchmark targets",
+      secondaryMetric: "intervention completion for 100% of identified students"
+    },
+    "School Culture and Climate": {
+      owner: "the Dean of Students",
+      cadence: "weekly",
+      timeline: "the end of Quarter 2",
+      primaryMetric: "a measurable decrease in repeat behavior incidents by 25%",
+      secondaryMetric: "average daily attendance above 95%"
+    },
+    "Special Populations": {
+      owner: "the Student Services Director",
+      cadence: "biweekly",
+      timeline: "the end of each quarter",
+      primaryMetric: "IEP/ML progress targets met for at least 80% of students",
+      secondaryMetric: "service minutes delivered at 100% compliance"
+    },
+    Operations: {
+      owner: "the Operations Director",
+      cadence: "weekly",
+      timeline: "the completion of pre-opening",
+      primaryMetric: "100% completion of critical launch milestones",
+      secondaryMetric: "on-time completion of compliance deliverables"
+    },
+    "Financial Plan": {
+      owner: "the Finance Director",
+      cadence: "monthly",
+      timeline: "the end of each fiscal quarter",
+      primaryMetric: "positive cash position with at least 60 days cash on hand",
+      secondaryMetric: "actual spending within 3% of budget assumptions"
+    },
+    Governance: {
+      owner: "the Board Chair",
+      cadence: "monthly board meetings",
+      timeline: "the end of Year 1",
+      primaryMetric: "100% completion of board oversight dashboards",
+      secondaryMetric: "documented corrective action plans for all off-track indicators"
+    }
+  };
+
+  return packs[section] || packs.Operations;
+}
+
+function styleLeadSentence(schoolName) {
+  const pov = state.style.pov || "first-person plural";
+  if (pov.includes("third-person")) {
+    return `${schoolName} presents a refined response aligned to Tennessee charter expectations.`;
+  }
+  return `We present a refined response for ${schoolName} aligned to Tennessee charter expectations.`;
+}
+
+function normalizeSentence(text) {
+  const clean = String(text || "").trim().replace(/\s+/g, " ");
+  if (!clean) return "";
+  if (/[.!?]$/.test(clean)) return clean;
+  return `${clean}.`;
 }
 
 async function callAI(payload) {
@@ -957,39 +1120,16 @@ async function sendNotification(event, payload) {
 }
 
 async function exportApplication() {
-  const schoolHeading = state.style.schoolName
-    ? `# ${state.style.schoolName}\n\n`
-    : "";
-
-  const compiled = QUESTION_BANK.map((q, idx) => {
-    const r = getResponse(q.id);
-    return [
-      `## ${idx + 1}. ${q.title}`,
-      `Section: ${q.section}`,
-      `Prompt: ${q.prompt}`,
-      `Rubric Score: ${scoreLabelText(r.score?.level)}`,
-      "",
-      r.draftText || "[No response yet]",
-      ""
-    ].join("\n");
-  }).join("\n");
-
-  const fullCompiled = `${schoolHeading}${compiled}`;
+  const payload = buildGoogleDocPayload();
+  const fullCompiled = payload.body;
 
   try {
-    const sections = QUESTION_BANK.map((q, idx) => ({
-      index: idx + 1,
-      questionId: q.id,
-      title: q.title,
-      score: getResponse(q.id).score?.level || "not_scored"
-    }));
-
     const json = await apiFetch(`/applications/${currentApplicationId}/google-doc`, {
       method: "POST",
       body: JSON.stringify({
-        title: `${state.style.schoolName || "TN Charter School"} Application Draft - ${new Date().toLocaleDateString()}`,
+        title: payload.title,
         body: fullCompiled,
-        sections
+        sections: payload.sections
       })
     });
     if (json.url) {
@@ -1012,6 +1152,68 @@ async function exportApplication() {
     alert("Application text copied to clipboard. Paste into the new Google Doc.");
   } catch {
     downloadTextFile("tn-charter-application-draft.txt", fullCompiled);
+  }
+}
+
+function buildGoogleDocPayload() {
+  const title = `${state.style.schoolName || "TN Charter School"} Application Draft - ${new Date().toLocaleDateString()}`;
+  const schoolHeading = state.style.schoolName
+    ? `# ${state.style.schoolName}\n\n`
+    : "";
+
+  const body = schoolHeading + QUESTION_BANK.map((q, idx) => {
+    const r = getResponse(q.id);
+    return [
+      `## ${idx + 1}. ${q.title}`,
+      `Section: ${q.section}`,
+      `Prompt: ${q.prompt}`,
+      `Rubric Score: ${scoreLabelText(r.score?.level)}`,
+      "",
+      r.draftText || "[No response yet]",
+      ""
+    ].join("\n");
+  }).join("\n");
+
+  const sections = QUESTION_BANK.map((q, idx) => ({
+    index: idx + 1,
+    questionId: q.id,
+    title: q.title,
+    score: getResponse(q.id).score?.level || "not_scored"
+  }));
+
+  return { title, body, sections };
+}
+
+async function autoSyncGoogleDocOnComplete() {
+  if (!currentApplicationId) return;
+
+  const payload = buildGoogleDocPayload();
+  try {
+    const result = await apiFetch(`/applications/${currentApplicationId}/google-doc/sync`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    if (result?.url) {
+      const existingIndex = currentDocs.findIndex((d) => d.isMaster === true);
+      const nextDoc = {
+        title: payload.title,
+        url: result.url,
+        documentId: result.documentId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isMaster: true
+      };
+
+      if (existingIndex >= 0) {
+        currentDocs[existingIndex] = { ...currentDocs[existingIndex], ...nextDoc };
+      } else {
+        currentDocs.unshift(nextDoc);
+      }
+      renderGeneratedDocs();
+    }
+  } catch (error) {
+    els.notifyStatus.textContent = `Saved section locally. Google Doc auto-sync failed: ${error.message}`;
   }
 }
 
@@ -1186,16 +1388,20 @@ async function loadAdminOverview() {
 
 async function rawFetch(path, options = {}) {
   const base = backendBaseUrl();
+  const targetUrl = `${base}${path}`;
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   let response;
   try {
-    response = await fetch(`${base}${path}`, { ...options, headers });
+    response = await fetch(targetUrl, { ...options, headers });
   } catch {
-    throw new Error(`Cannot reach backend at ${base}. Set BACKEND_BASE_URL to your deployed API URL and verify CORS.`);
+    throw new Error(`Cannot reach backend at ${base}. Set Backend API Base URL on this page and verify CORS.`);
   }
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(json.error || `Request failed (${response.status})`);
+    const suffix = response.status === 405
+      ? ` Method not allowed at ${targetUrl}. This usually means Backend API Base URL is wrong or points to frontend instead of API.`
+      : "";
+    throw new Error((json.error || `Request failed (${response.status}).`) + suffix);
   }
   return json;
 }
@@ -1231,6 +1437,11 @@ async function apiFetchUrl(url, options = {}) {
 }
 
 function backendBaseUrl() {
+  const override = localStorage.getItem(BACKEND_OVERRIDE_KEY);
+  if (override) {
+    return String(override).replace(/\/$/, "");
+  }
+
   if (config.BACKEND_BASE_URL) {
     return String(config.BACKEND_BASE_URL).replace(/\/$/, "");
   }
